@@ -2,13 +2,13 @@
 # Thus, the outputs can be fully replicated in R,
 # provided that the following libraries are installed.
 
-library(readxl)
 library(tidyverse)
 library(zoo)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
 library(ggthemes)
+library(gridExtra)
 
 # Introduction ----
 
@@ -202,7 +202,7 @@ df_8 <- df_8 %>%
   ))
 
 # The plot:
-df_8 %>% ggplot(aes(x = ym, y = value/1e+06, fill = line_item))+
+plot_ma_balance <- df_8 %>% ggplot(aes(x = ym, y = value/1e+06, fill = line_item))+
   geom_area() +
   labs(
     title = "HKMA Balance Sheet",
@@ -212,12 +212,14 @@ df_8 %>% ggplot(aes(x = ym, y = value/1e+06, fill = line_item))+
   ) +
   # The theme is chosen to mimic a Microsoft Office-esque style, 
   # for publishing purposes.
-  theme_bw() +
+  # theme_bw() +
+  # scale_fill_calc() +
   theme(
     legend.position = "right",
-    text = element_text(size = 20, family = "Arial Narrow Bold"),
-    legend.text=element_text(size=20, family = "Arial Narrow"),
-    legend.title=element_text(size=20, family = "Arial Narrow Bold")
+    text = element_text(size = 12),
+    title = element_text(size=14, face = 'bold'),
+    legend.text=element_text(size=12),
+    legend.title=element_text(size=12, face = 'bold')
   ) +
   scale_y_continuous(labels = abs)
 
@@ -244,7 +246,7 @@ df_9 <- merge(data_moneysupply_hkd, data_moneysupply_fc, by = "end_of_month") %>
   gather(key = "currency", value = "dollars", - ym) 
 
 # Plot:
-df_9 %>% ggplot(aes(x = ym, y = dollars/1e+06, fill = currency)) +
+plot_base_by_fx <- df_9 %>% ggplot(aes(x = ym, y = dollars/1e+06, fill = currency)) +
   geom_area()+
   labs(
     fill = "Legend",
@@ -252,13 +254,14 @@ df_9 %>% ggplot(aes(x = ym, y = dollars/1e+06, fill = currency)) +
     title = "Hong Kong's Monetary Base, by currency",
     y = "HK$ trillions"
   ) +
-  theme_bw()+
-  #scale_fill_calc()+
+  # theme_bw() +
+  # scale_fill_calc() +
   theme(
     legend.position = "bottom",
-    text = element_text(size = 20, family = "Arial Narrow Bold"),
-    legend.text=element_text(size=20, family = "Arial Narrow"),
-    legend.title=element_text(size=20, family = "Arial Narrow Bold")
+    text = element_text(size = 12),
+    title = element_text(size=14, face = 'bold'),
+    legend.text=element_text(size=12),
+    legend.title=element_text(size=12, face = 'bold')
   ) 
 # Takeaway: only half the money in Hong Kong is denoted in the local currency.
 # This is relevant as the local currency needs to be defended by 
@@ -282,26 +285,34 @@ df_4 %>% mutate(aggregate_balance_to_m3 = liab_banking_system_bal/m3_supply) %>%
 # money supply that is denoted in the local currency.
 # The code also pivots the data longer and replaces column names with proper labels.
 df_6 <- merge(data_balancesheet, data_moneysupply_hkd, by = "end_of_month") %>%
+  merge(data_moneysupply_fc, by = "end_of_month") %>%
   mutate(
     ym = as.yearmon(end_of_month, "%Y-%m") %>% as.Date()
   ) %>%
   relocate(ym) %>% 
   mutate(
     assets_net_banking_system_bal = assets_total - liab_banking_system_bal,
-    m3_supply_net_hkma = m3_supply - assets_total
+    m3_supply_net_hkma = m3_supply.x - assets_total
   ) %>%
-  select(ym, liab_banking_system_bal, assets_net_banking_system_bal, m3_supply_net_hkma) %>%
+  select(ym, liab_banking_system_bal, assets_net_banking_system_bal, 
+         m3_supply_net_hkma, m3_supply.y) %>%
   gather(key = "item", value = "millions", - ym) %>%
-  mutate(item = fct_reorder(item, millions),
+  mutate(
          item = case_when(
            item == "liab_banking_system_bal" ~ "Aggregate Balance (AB)",
            item == "assets_net_banking_system_bal" ~ "HKMA net AB",
-           item == "m3_supply_net_hkma" ~ "M3 net HKMA and AB"
-         )
+           item == "m3_supply_net_hkma" ~ "M3 HKD, net HKMA and AB",
+           item == "m3_supply.y" ~ "M3 foreign currency"
+         ),
+         # item = fct_reorder(item, millions, .desc = TRUE),
+         item = factor(item, levels = c("Aggregate Balance (AB)", 
+                                        "HKMA net AB",
+                                        "M3 HKD, net HKMA and AB",
+                                        "M3 foreign currency"))
   )
 
 # Plot: 
-df_6 %>% ggplot(aes(x = ym, y = millions/1e+06, fill = item)) +
+plot_base_net_ma <- df_6 %>% ggplot(aes(x = ym, y = millions/1e+06, fill = item)) +
   geom_area() +
   labs(
     fill = "Legend",
@@ -309,19 +320,71 @@ df_6 %>% ggplot(aes(x = ym, y = millions/1e+06, fill = item)) +
     title = "Hong Kong's HKD Monetary Base, Covered vs. Uncovered by HKMA",
     y = "HK$ trillions"
   ) +
-  theme_bw()+
-  #scale_fill_calc()+
+  # theme_bw() +
+  # scale_fill_calc() +
   theme(
-    legend.position = "bottom",
-    text = element_text(size = 20, family = "Arial Narrow Bold"),
-    legend.text=element_text(size=20, family = "Arial Narrow"),
-    legend.title=element_text(size=20, family = "Arial Narrow Bold")
+    legend.position = "right",
+    text = element_text(size = 12),
+    title = element_text(size=14, face = 'bold'),
+    legend.text=element_text(size=12),
+    legend.title=element_text(size=12, face = 'bold')
   ) 
+
 # Takeaway 1: commercial bank deposits at the central bank 
 # make up an insignificant amount of total reserves.
 # Takeaway 2: the central bank has the capacity 
 # to maintain the local currency's value 
 # provided that no more than about half is converted.
+
+## final output ----
+grid.arrange(plot_ma_balance, plot_base_net_ma, nrow = 2)
+
+## Statistical test on which line item predicts money supply ----
+merge(data_moneysupply_fc, data_balancesheet, by = "end_of_month") %>% 
+  lm(data = ., m3_supply ~ liab_banking_system_bal) %>%
+  summary()
+
+merge(data_moneysupply_fc, data_balancesheet, by = "end_of_month") %>% 
+  lm(data = ., m3_supply ~ fund_equity) %>%
+  summary()
+
+# Takeaway: it is not aggregate balance that co-moves money supply, but rather 
+# the HKMA's own equity.
+
+
+## Plot: Aggregate Balance (daily) ----
+data_daily_liquidity <- fromJSON("https://api.hkma.gov.hk/public/market-data-and-statistics/daily-monetary-statistics/daily-figures-interbank-liquidity?pagesize=1000&offset=0")$result$records %>%
+  rbind(
+    fromJSON("https://api.hkma.gov.hk/public/market-data-and-statistics/daily-monetary-statistics/daily-figures-interbank-liquidity?pagesize=1000&offset=1000")$result$records
+  ) %>%
+  mutate(
+    date = as.Date(end_of_date, "%Y-%m-%d"),
+    end_of_date = NULL
+  ) %>%
+  relocate(date)
+
+ggplot(data_daily_liquidity, aes(x = date)) +
+  geom_line(aes(y = closing_balance/1e+06)) +
+  labs(
+    title = "Aggregate Balance",
+    y = "HK$ trillions",
+    x = ""
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 20, family = "Arial Narrow Bold")
+  )
+
+
+## Plot: Comparing banking system balance to aggregate balance ----
+grid.arrange(
+  ggplot(df_4, aes(x = ym, y = liab_banking_system_bal)) +
+    geom_line(),
+  ggplot(data_daily_liquidity %>% filter(date >= "2016-04-01"), aes(x = date, y = closing_balance)) + 
+    geom_line(),
+  ncol = 2
+)
+# This confirms that the monthly dataset tracks the same thing as the daily one.
 
 
 
